@@ -361,7 +361,7 @@ def post(url_, uuid, operations, swap):
 
 
 if __name__ == '__main__':
-    url_get = "http://47.102.118.1:8089/api/problem?stuid=031802624"
+    url_get = "http://47.102.118.1:8089/api/problem?stuid=031802621"
     url_post = "http://47.102.118.1:8089/api/answer"
     resp_g = get(url_get)
     step_num = resp_g['step']  # 第几步进行强制交换
