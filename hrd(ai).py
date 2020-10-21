@@ -15,6 +15,25 @@ import pytest
 from PIL import Image
 from io import BytesIO
 
+url = "http://47.102.118.1:8089/"
+L = url+"/api/challenge/list"  # 获取赛题
+R = url+"/api/challenge/record/"  # 获取赛题的解题记录（R+赛题的uuid）
+C = url+"/api/challenge/create"  # 创建赛题
+ST = url+"/api/challenge/start/"  # 挑战赛题（ST+赛题的uuid）
+SU = url+"/api/challenge/submit"  # 提交赛题答案
+RA = url+"/api/rank"  # 排行榜
+T = url+"/api/teamdetail/"  # 获取指定队伍的信息（T+teamid）
+P = url+"/api/team/problem/"  # 获取还未通过的题目（P+teamid）
+teamid = 47
+token = "2cbc804a-6178-409d-abb5-1c993ad889bd"
+letter = 'g'
+exclude = 1
+challenge = [[4, 2, 0],
+             [7, 5, 3],
+             [8, 9, 6]]
+step = 8
+swap = [5, 4]
+
 class Square:
     def __init__(self,stat,pos,step=0,prboard=None,prpath=""):
         self.stat = stat
@@ -359,21 +378,116 @@ def post(url_, uuid, operations, swap):
     resp = json.loads(response.text)
     return resp
 
+def get_question(url_):
+    response = requests.get(url=url_)
+    resp = json.loads(response.text)
+    return resp
+
+# 获取赛题的解题记录，返回所有解出这题的队伍的纪录（列表）
+def get_record(url_):
+    response = requests.get(url=url_)
+    resp = json.loads(response.text)
+    return resp
+
+def post_create(url_, teamid, letter, exclude, challenge, step, swap, token):
+    url = url_
+    question = {"teamid": teamid,
+                "data": {
+                    "letter": letter,
+                    "exclude": exclude,
+                    "challenge": challenge,
+                    "step": step,
+                    "swap": swap
+                },
+                "token": token}
+    response = requests.post(url=url_, json=question)
+    resp = json.loads(response.text)
+    return resp
+
+# 挑战赛题的接口
+def post_challenge(url_, teamid, token):
+    # url = url_
+    data = {"teamid": teamid,
+            "token": token
+            }
+    response = requests.post(url=url_, json=data)
+    resp = json.loads(response.text)
+    return resp
+
+
+# 提交赛题答案的接口
+def post_submit(url_, uuid, teamid, token, operations, swap):
+    # url = url_
+    data = {"uuid": uuid,
+            "teamid": teamid,
+            "token": token,
+            "answer": {
+                "operations": operations,
+                "swap": swap
+            }
+            }
+    response = requests.post(url=url_, json=data)
+    resp = json.loads(response.text)
+    return resp
+
+
+# 从高到低返回排行榜，展示每个队伍的获得的分数score、以及rank总分排名
+def get_rank(url_):
+    response = requests.get(url=url_)
+    resp = json.loads(response.text)
+    return resp
+
+
+# 获取指定队伍的信息，展示当前队伍的分数score、rank总分排名、还有解出的题success列表
+def get_teamdetail(url_):
+    response = requests.get(url=url_)
+    resp = json.loads(response.text)
+    return resp
+
+
+# 获取还未通过的题目，展示当前队伍还未挑战或通过的题目（不包括自己出的）
+def get_problem(url_):
+    response = requests.get(url=url_)
+    resp = json.loads(response.text)
+    return resp
+
+
+# 获取赛题，求解，并提交赛题，返回测试结果
+def ai_test(url_get, url_post, teamid, token):
+    challenge_resp = post_challenge(url_get, teamid, token)
+    # print("challenge_resp: ", challenge_resp)
+    # print("第几步进行强制转换: ", resp_g['step'])
+    # print("调换的图片编号: ", resp_g['swap'])
+    # print("题目标识: ", resp_g['uuid'])
+    step_num = challenge_resp['data']['step']  # 第几步进行强制交换
+    swap_schedule = challenge_resp['data']['swap']  # 强制交换最初方案
+    uuid = challenge_resp['uuid']  # 题目标识
+    # 题目中图片编号1~9，程序中为0~8，故调整一下调换图片的编号
+    swap_schedule[0] -= 1
+    swap_schedule[1] -= 1
+    start, pos, end = img_match(challenge_resp['data']['img'])
+    solve = IDA(start, pos, end, step_num, swap_schedule)
+    path = solve.IDA()
+    # 调整编号，符合题目要求
+    solve.swap_schedule[0] += 1
+    solve.swap_schedule[1] += 1
+    submit_resp = post_submit(url_post, uuid, teamid, token, path, solve.swap_schedule)
+    print("submit_resp: \n", submit_resp)
+    return submit_resp
 
 if __name__ == '__main__':
-    url_get = "http://47.102.118.1:8089/api/problem?stuid=031802621"
-    url_post = "http://47.102.118.1:8089/api/answer"
-    resp_g = get(url_get)
-    step_num = resp_g['step']  # 第几步进行强制交换
-    swap_scheme = resp_g['swap']  # 强制交换最初方案
-    # 题目中图片编号1~9，程序中为0~8，故调整一下调换图片的编号
-    swap_scheme[0] -= 1
-    swap_scheme[1] -= 1
-    start, pos, end = img_match(resp_g['img'])
-    solve = IDA(start, pos, end, step_num, swap_scheme)
-    path = solve.IDA()
-    solve.swap_scheme[0] += 1
-    solve.swap_scheme[1] += 1
-    resp_p = post(url_post, resp_g['uuid'], path, solve.swap_scheme)
-    print(resp_p)#输出结果
+    question = get_question(L)  # 返回赛题列表
+    print("question: \n", question)
+    # 查看排行榜
+    rank = get_rank(RA)
+    print("rank: \n", rank)
+
+    # 查看未做的题目
+    problem = get_problem(P+str(teamid))
+    print("problem: \n", problem)
+    for i in question:
+        if i['author'] != teamid:
+            uuid = i['uuid']
+            res = ai_test(ST+uuid, SU, teamid, token)
+            print(res)  
 
